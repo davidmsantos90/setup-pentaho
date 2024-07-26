@@ -3,12 +3,16 @@
 unzip_artifact() {
   local filename="$1.zip"
   local destination="$2"
+  local skip_check="$3"
 
   cd "$(get_download_directory)" || exit
 
-  if [ -d "$destination" ]; then
-    echo -e "$SUCCESS- '$filename' already unzipped!$CLEAR"
-    return 0
+  # skip check for plugins (not working properly ATM)
+  if [ "$skip_check" != true ]; then
+    if [ -d "$destination" ]; then
+      echo -e "$SUCCESS- '$filename' already unzipped!$CLEAR"
+      return 0
+    fi
   fi
 
   echo -e "$INFO- unzipping $filename to $destination'"
@@ -39,5 +43,5 @@ unzip_server() {
 unzip_plugin() {
   local name="$1"
 
-  unzip_artifact "$name" "$(get_plugin_unzip_directory)"
+  unzip_artifact "$name" "$(get_plugin_unzip_directory)" "true"
 }
