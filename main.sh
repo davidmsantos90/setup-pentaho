@@ -97,7 +97,7 @@ else
   fi
 
   latest_date=$(get_date_from_json "$json_build_folder")
-  if [ -z "$latest_date" ]; then
+  if [ -z "$latest_date" ] || [ "$latest_date" = null ]; then
     echo -e "\n$ERROR### Failed to parse the build latest date! ###$CLEAR"
     exit 0
   fi
