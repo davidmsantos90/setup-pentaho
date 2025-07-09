@@ -45,12 +45,33 @@ get_json_build_file_id() {
   echo "$id$sufix.zip"
 }
 
+get_file_modified_date() {
+  local file_path=$1
+
+  if [ ! -f "$file_path" ]; then
+    return 1
+  fi
+
+  local stats="$(stat $file_path)"
+
+  # extract last modified date from the Modify stat
+  #   from: "Modify: 2025-07-09 06:05:58.000000000 +0100"
+  #   to:   "2025-07-09"
+  echo "$stats" | grep "Modify" | awk '{print $2}'
+}
+
 get_json_file_mapping() {
   mkdir -p $(get_temp_directory)
 
   local filename="fileMapping.json"
 
   cd "$(get_temp_directory)" || exit
+
+  # force fileMapping.json to be downloaded again, if last modified wasn't today
+  local mapping_last_modified_date=$(get_file_modified_date "$filename")
+  if [ "$mapping_last_modified_date" != "$date_today" ]; then
+    rm -f "$filename"
+  fi
 
   local mapping_url="$build_repository/hosted/$filename"
   wget -nv -q -nc "$mapping_url"
@@ -77,6 +98,17 @@ get_json_build_folder() {
 }
 
 get_date_from_json() {
+  local folder=$1
+  local modified=$(echo "$folder" | jq -r ".files.\"$(get_json_build_file_id)\".modified")
+
+  # split a string like "2023-10-01 2:34:56" to "2023-10-01"
+  echo $modified | awk '{print $1}'
+
+  # echo $modified | cut -d' ' -f 1 | tr -d ' '
+}
+
+# @deprecated
+get_date_from_json_old() {
   local folder=$1
 
   if [ "$build" != "$SNAPSHOT" ]; then
