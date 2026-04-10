@@ -7,8 +7,8 @@ get_json_folder_id() {
   case "$build" in
     "$RELEASE") id="$version";;
     "$QAT")
-      major=$(echo $version | cut -d'.' -f 1)
-      minor=$(echo $version | cut -d'.' -f 2)
+      local major=$(echo "$version" | cut -d'.' -f 1)
+      local minor=$(echo "$version" | cut -d'.' -f 2)
 
       id="$major.$minor-$build_uppercase"
       ;;
@@ -17,14 +17,14 @@ get_json_folder_id() {
       ;;
   esac
 
-  echo $id
+  echo "$id"
 }
 
 get_json_build_file_id() {
   local id=$1
   local sufix=""
 
-  if [ -z $id ]; then
+  if [ -z "$id" ]; then
     case "$mode" in
       "$MODE_SERVER") id=$SERVER;;
       "$MODE_PDI")
@@ -37,7 +37,7 @@ get_json_build_file_id() {
     esac
   fi
 
-  if [ $build = $SNAPSHOT ]; then
+  if [ "$build" = "$SNAPSHOT" ]; then
     local build_uppercase=$(echo "$build" | tr '[:lower:]' '[:upper:]')
     id="$id-$version-$build_uppercase"
   fi
@@ -52,7 +52,7 @@ get_file_modified_date() {
     return 1
   fi
 
-  local stats="$(stat $file_path)"
+  local stats="$(stat "$file_path")"
 
   # extract last modified date from the Modify stat
   #   from: "Modify: 2025-07-09 06:05:58.000000000 +0100"
@@ -61,7 +61,7 @@ get_file_modified_date() {
 }
 
 get_json_file_mapping() {
-  mkdir -p $(get_temp_directory)
+  mkdir -p "$(get_temp_directory)"
 
   local filename="fileMapping.json"
 
@@ -76,7 +76,7 @@ get_json_file_mapping() {
   local mapping_url="$build_repository/hosted/$filename"
   wget -nv -q -nc "$mapping_url"
 
-  echo $(jq -c '.' $filename)
+  jq -c '.' "$filename"
 }
 
 get_json_build_folder() {
@@ -93,7 +93,7 @@ get_json_build_folder() {
 
   json_mapping="$(get_json_file_mapping)"
   if [ -n "$json_mapping" ]; then
-    echo $(get_json_file_mapping) | jq -c -r ".$jq_filter"
+    echo "$json_mapping" | jq -c -r ".$jq_filter"
   fi
 }
 
@@ -102,7 +102,7 @@ get_date_from_json() {
   local modified=$(echo "$folder" | jq -r ".files.\"$(get_json_build_file_id)\".modified")
 
   # split a string like "2023-10-01 2:34:56" to "2023-10-01"
-  echo $modified | awk '{print $1}'
+  echo "$modified" | awk '{print $1}'
 
   # echo $modified | cut -d' ' -f 1 | tr -d ' '
 }
@@ -131,7 +131,7 @@ get_artifact_url_from_json() {
   local folder=$1
   local id_override=$2
 
-  local url=$(echo "$folder" | jq -r ".files.\"$(get_json_build_file_id $id_override)\".url")
+  local url=$(echo "$folder" | jq -r ".files.\"$(get_json_build_file_id "$id_override")\".url")
 
-  echo $url
+  echo "$url"
 }

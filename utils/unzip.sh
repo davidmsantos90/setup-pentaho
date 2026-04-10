@@ -7,7 +7,6 @@ unzip_artifact() {
 
   cd "$(get_download_directory)" || exit
 
-  # skip check for plugins (not working properly ATM)
   if [ "$skip_check" != true ]; then
     if [ -d "$destination" ]; then
       echo -e "$SUCCESS- '$filename' already unzipped!$CLEAR"
@@ -15,7 +14,7 @@ unzip_artifact() {
     fi
   fi
 
-  echo -e "$INFO- unzipping $filename to $destination'"
+  echo -e "$INFO- unzipping '$filename' to '$destination'"
   unzip -q "$filename" -d "$destination"
   echo -e "$CLEAR\c"
 }
@@ -42,6 +41,15 @@ unzip_server() {
 
 unzip_plugin() {
   local name="$1"
+  local plugin_dir
+  plugin_dir="$(get_plugin_unzip_directory)/$(get_plugin_folder_name "$name")"
 
+  # check for the plugin's own subdirectory, not the shared system/ parent
+  if [ -d "$plugin_dir" ]; then
+    echo -e "$SUCCESS- '$name' already unzipped!$CLEAR"
+    return 0
+  fi
+
+  # skip_check=true because destination is the shared system/ dir (always exists)
   unzip_artifact "$name" "$(get_plugin_unzip_directory)" "true"
 }

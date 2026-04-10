@@ -15,9 +15,16 @@ download_artifact() {
 
   insecure_flag=""; [ "$secure" = false ] && insecure_flag="--no-check-certificate"
 
+  # expose the full path so the interrupt trap in main.sh can clean up a partial file
+  _current_download="$(get_download_directory)/$filename"
+
   echo -e "$INFO\c"
   wget -nv -q --show-progress -nc $insecure_flag -O "$filename" "$url"
+  local wget_exit=$?
+
+  _current_download=""
   echo -e "$CLEAR\c"
+  return "$wget_exit"
 }
 
 download_pdi() {

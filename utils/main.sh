@@ -1,10 +1,7 @@
 #!/bin/bash
 
 # TODO
-#  - list builds
 #  - better error handling
-#  - better detection of installed build and plugins
-#  - canceling script before download finished, should delete files
 
 BIFS="$IFS"
 
@@ -16,6 +13,17 @@ BIFS="$IFS"
   PLUGIN_PAZ="paz-plugin-ee"
   PLUGIN_PDD="pdd-plugin-ee"
   PLUGIN_PIR="pir-plugin-ee"
+
+# Maps a plugin zip name to the folder name it extracts into under system/
+get_plugin_folder_name() {
+  local plugin_name="$1"
+  case "$plugin_name" in
+    "$PLUGIN_PAZ") echo "analyzer";;
+    "$PLUGIN_PDD") echo "dashboards";;
+    "$PLUGIN_PIR") echo "pentaho-interactive-reporting";;
+    *)             echo "$plugin_name";;  # unknown plugin: assume zip name = folder name
+  esac
+}
 
 ### Buils (-b / build) ###
   SNAPSHOT="snapshot"
@@ -44,6 +52,7 @@ CURRENT_SCRIPT_DIR=$(dirname "$(realpath "$0")")
 set -a
   . "$CURRENT_SCRIPT_DIR/utils/download.sh"
   . "$CURRENT_SCRIPT_DIR/utils/json.sh"
+  . "$CURRENT_SCRIPT_DIR/utils/list.sh"
   . "$CURRENT_SCRIPT_DIR/utils/unzip.sh"
 set +a
 
@@ -84,7 +93,7 @@ check_dependencies() {
     [[ $OSTYPE != 'darwin'* ]] && echo -e "$ERROR! this script needs 'date' to be installed !$CLEAR"
   fi
 
-  if [ $has_dependencies_installed = false ] || { [[ $OSTYPE == 'darwin'* ]] && [[ $date_path != *'coreutils'* ]]; }; then
+  if [ "$has_dependencies_installed" = false ] || { [[ $OSTYPE == 'darwin'* ]] && [[ $date_path != *'coreutils'* ]]; }; then
     has_dependencies_installed=false
 
     echo -e "$ERROR! this script needs 'date' from 'coreutils' to be installed !$CLEAR"
@@ -106,7 +115,7 @@ check_dependencies() {
     echo -e "$ERROR! this script needs 'wget' to be installed !$CLEAR"
   fi
 
-  if [ $has_dependencies_installed = false ]; then
+  if [ "$has_dependencies_installed" = false ]; then
     return 1
   fi
 }
@@ -115,7 +124,11 @@ get_date() {
   local date_str=$1
   local output_format="%Y-%m-%d"
 
-  date -d "$date_str" "+$output_format"
+  if [ -z "$date_str" ]; then
+    date "+$output_format"
+  else
+    date -d "$date_str" "+$output_format"
+  fi
 }
 
 is_build_downloaded() {
@@ -152,30 +165,74 @@ is_build_unzipped() {
 
 
 print_help() {
-  echo -e "$INFO\c"
-  echo -e "$INFO### Help ###\n"
-  echo -e "$INFO (-s) [true]        Download build in secure / unsecure mode"
-  echo -e "$INFO (-l) [false]       Launch after build is ready"
-  echo -e "$INFO (-m) [server]      Setup mode"
-  echo -e "$CLEAR                      - 'server'"
-  echo -e "$CLEAR                      - 'pdi'"
-  echo -e "$INFO (-p) [null]        Pentaho Server plugins"
-  echo -e "$CLEAR                      - 'paz-plugin-ee'"
-  echo -e "$CLEAR                      - 'paz-plugin-ee,pdd-plugin-ee,pir-plugin-ee'"
-  echo -e "$CLEAR                      - '...'"
-  echo -e "$INFO (-b) [snapshot]    Pentaho build type"
-  echo -e "$CLEAR                      - 'snapshot'"
-  echo -e "$CLEAR                      - 'qat'"
-  echo -e "$CLEAR                      - 'release'"
-  echo -e "$INFO (-f) [master]      Download build from a feature branch"
-  echo -e "$CLEAR                      - 'master'"
-  echo -e "$CLEAR                      - 'WCAG-branch'"
-  echo -e "$CLEAR                      - 'schedule-plugin'"
-  echo -e "$CLEAR                      - '...'"
-  echo -e "$INFO (-v) [$version]    Pentaho build version"
-  echo -e "$INFO (-d) [$date_today]  Specify the build date you want to setup"
-  echo -e "$CLEAR                      - need to have build already downloaded"
-  echo -e "$CLEAR                      - format: YYYY-MM-DD (other formats may be valid)"
+  echo -e "$INFO"
+  echo -e "  ### setup-pentaho ###"
+  echo -e "$CLEAR"
+  echo -e "  setup-pentaho [flags]"
+  echo ""
+
+  # Column layout: flag + default occupy cols 0-19, description starts at col 20.
+  # Padding per flag (visible chars counted without ANSI codes):
+  #   -h / -x / -p          →  4 chars  → 16 spaces
+  #   -m / -f / -c [FILTER] → 13 chars  →  7 spaces
+  #   -b / -v                → 15 chars  →  5 spaces
+  #   -s [true]              → 11 chars  →  9 spaces
+  #   -l [false]             → 12 chars  →  8 spaces
+  #   -d [YYYY-MM-DD]        → 18 chars  →  2 spaces
+  # Continuation / option lines always indent 20 spaces.
+
+  echo -e "$INFO  UTILITY$CLEAR"
+  echo ""
+  echo -e "  $INFO-h$CLEAR                Print this help message and exit"
+  echo ""
+  echo -e "  $INFO-c$CLEAR $WARN[FILTER]$CLEAR       List local builds with download / unzip status"
+  echo -e "                    Filter: all | snapshot | qat | release"
+  echo -e "                    Defaults to the current -b value"
+  echo ""
+  echo -e "  $INFO-x$CLEAR                Gracefully stop a running Pentaho Server"
+  echo -e "                    Resolves the build path from -b / -f / -v / -d"
+  echo ""
+
+  echo -e "$INFO  SETUP$CLEAR"
+  echo ""
+  echo -e "  $INFO-m$CLEAR $WARN[server]$CLEAR       Mode — product to set up"
+  echo -e "                    server  Pentaho Server (default)"
+  echo -e "                    pdi     Pentaho Data Integration / Spoon"
+  echo ""
+  echo -e "  $INFO-b$CLEAR $WARN[snapshot]$CLEAR     Build type"
+  echo -e "                    snapshot  Latest continuous build (default)"
+  echo -e "                    qat       QA-tested build"
+  echo -e "                    release   Official release"
+  echo ""
+  echo -e "  $INFO-f$CLEAR $WARN[master]$CLEAR       Feature branch  (snapshot builds only)"
+  echo -e "                    master           Main branch (default)"
+  echo -e "                    WCAG-branch      WCAG accessibility branch"
+  echo -e "                    schedule-plugin  Scheduler plugin branch"
+  echo ""
+  echo -e "  $INFO-v$CLEAR $WARN[$version]$CLEAR     Version string"
+  echo ""
+  echo -e "  $INFO-p$CLEAR                Comma-separated server plugins  ($INFO-m server$CLEAR only)"
+  echo -e "                    paz-plugin-ee  /  pdd-plugin-ee  /  pir-plugin-ee"
+  echo ""
+
+  echo -e "$INFO  DOWNLOAD$CLEAR"
+  echo ""
+  echo -e "  $INFO-s$CLEAR $WARN[true]$CLEAR         SSL certificate validation"
+  echo -e "                    true   Validate certificates (default)"
+  echo -e "                    false  Skip  (use for VPN / self-signed cert issues)"
+  echo ""
+  echo -e "  $INFO-d$CLEAR $WARN[$date_today]$CLEAR  Date of an already-downloaded build"
+  echo -e "                    Format: YYYY-MM-DD  (other GNU date formats may work)"
+  echo -e "                    Artifacts must already exist locally"
+  echo ""
+
+  echo -e "$INFO  LAUNCH$CLEAR"
+  echo ""
+  echo -e "  $INFO-l$CLEAR $WARN[false]$CLEAR        Launch the product after setup completes"
+  echo -e "                    Server  start-pentaho-debug.sh + tail catalina.out"
+  echo -e "                    PDI     spoon.sh"
+  echo -e "                    Output is colour-coded  (Ctrl+C to stop)"
+  echo ""
 
   echo -e "$CLEAR"
 }
@@ -193,3 +250,31 @@ print_setup_info() {
   echo -e "- version: '$version'"
   echo -e "- date: '$date_setup' ($date_extra) \n$CLEAR"
 }
+
+stop_pentaho_server() {
+  local server_dir
+  server_dir="$(get_server_unzip_directory)/pentaho-server"
+
+  if [ ! -d "$server_dir" ]; then
+    echo -e "$ERROR- Server directory not found: '$server_dir'$CLEAR"
+    echo -e "  - Make sure -b, -f, -v, and -d flags point to an installed build."
+    return 1
+  fi
+
+  local pid_file="$server_dir/tomcat/bin/catalina.pid"
+
+  if [ -f "$pid_file" ]; then
+    echo -e "$INFO- Stopping Pentaho Server (PID: $(cat "$pid_file"))...$CLEAR"
+    "$server_dir/stop-pentaho.sh"
+    echo -e "$SUCCESS- Server stopped.$CLEAR"
+  else
+    echo -e "$WARN- PID file not found at '$pid_file'. Falling back to pkill...$CLEAR"
+    if pkill -f tomcat; then
+      echo -e "$SUCCESS- Tomcat processes killed.$CLEAR"
+    else
+      echo -e "$ERROR- No running Tomcat process found.$CLEAR"
+      return 1
+    fi
+  fi
+}
+

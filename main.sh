@@ -1,10 +1,7 @@
 #!/bin/bash
 
 # TODO
-#  - list builds
 #  - better error handling
-#  - better detection of installed plugins
-#  - canceling script before download finished, should delete files
 
 CURRENT_SCRIPT_DIR=$(dirname "$(realpath "$0")")
 
@@ -19,13 +16,34 @@ set -a
 set +a
 
 ### Check script dependencies
-check_dependencies || exit 0
+check_dependencies || exit 1
+
+### Interrupt handler — removes partial downloads on Ctrl+C / SIGTERM
+_current_download=""
+_cleanup_on_interrupt() {
+  echo -e "\n$WARN- Setup interrupted!$CLEAR"
+  if [ -n "$_current_download" ] && [ -f "$_current_download" ]; then
+    echo -e "$WARN- Removing partial download: $(basename "$_current_download")$CLEAR"
+    rm -f "$_current_download"
+  fi
+  exit 1
+}
+trap _cleanup_on_interrupt INT TERM
 
 ### load script arguments ###
-  while getopts hs:l:m:p:b:f:v:d: flag
+  while getopts :hc:xs:l:m:p:b:f:v:d: flag
   do
     case "${flag}" in
       h) help=true;;
+      c)
+        catalog=true
+        # accept a valid filter value; ignore anything else and fall back to default
+        case "$OPTARG" in
+          all|snapshot|qat|release) catalog_filter="$OPTARG";;
+          *) catalog_filter="";;
+        esac
+        ;;
+      x) stop_server=true;;
       s) secure=${OPTARG};;
       l) launch_server=${OPTARG};;
       m) mode=${OPTARG};;
@@ -34,7 +52,16 @@ check_dependencies || exit 0
       f) feature=${OPTARG};;
       v) version=${OPTARG};;
       d) date_setup="$(get_date "${OPTARG}")";;
-      *) echo -e "$WARN- flag '${flag}' is not supported";;
+      :)
+        # -c is allowed without an argument; all other flags that need one are errors
+        if [ "$OPTARG" = "c" ]; then
+          catalog=true
+          catalog_filter=""  # will default to $build in defaults section
+        else
+          echo -e "$WARN- flag '-${OPTARG}' requires an argument$CLEAR"
+        fi
+        ;;
+      ?) echo -e "$WARN- flag '-${OPTARG}' is not supported$CLEAR";;
       esac
   done
 
@@ -45,6 +72,8 @@ check_dependencies || exit 0
 
   secure="${secure:-true}"
   help="${help:-false}"
+  catalog="${catalog:-false}"
+  stop_server="${stop_server:-false}"
   launch_server="${launch_server:-false}"
 
   version="${version:-10.3.0.0}"
@@ -52,10 +81,20 @@ check_dependencies || exit 0
   build="${build:-$SNAPSHOT}"
   feature="${feature:-$FEAT_MASTER}"
   date_setup="${date_setup:-$date_today}"
+  catalog_filter="${catalog_filter:-$build}"
 
 
 if [ "$help" = true ]; then
   print_help && exit 0
+fi
+
+if [ "$catalog" = true ]; then
+  list_builds "$catalog_filter" && exit 0
+fi
+
+if [ "$stop_server" = true ]; then
+  stop_pentaho_server
+  exit $?
 fi
 
 
@@ -114,7 +153,7 @@ fi
 ###
 ## 2. Download phase
 #
-if [ $do_download_phase = true ]; then
+if [ "$do_download_phase" = true ]; then
   echo -e "$INFO\n### Download phase started ###\n$CLEAR"
 
   if [ ! -d "$(get_download_directory)" ]; then
@@ -129,6 +168,7 @@ if [ $do_download_phase = true ]; then
     for plugin in $plugins; do
       download_plugin "$json_build_folder" "$plugin"
     done
+    IFS="$BIFS"
   else
     download_pdi "$json_build_folder"
   fi
@@ -140,7 +180,7 @@ fi
 ###
 ## 3. Unzip phase
 #
-if [ $do_unzip_phase = true ]; then
+if [ "$do_unzip_phase" = true ]; then
   echo -e "$INFO\n### Unzip phase started ###\n$CLEAR"
 
   if [ ! -d "$(get_unzip_directory)" ]; then
@@ -155,6 +195,7 @@ if [ $do_unzip_phase = true ]; then
     for plugin in $plugins; do
       unzip_plugin "$plugin"
     done
+    IFS="$BIFS"
   else
     unzip_pdi
   fi
@@ -167,11 +208,10 @@ fi
 #
 if [ "$launch_server" = true ]; then
   if [ "$mode" = "$MODE_SERVER" ]; then
-    trap ctrl_c INT
-
     ctrl_c() {
       pkill -9 -f tomcat
     }
+    trap ctrl_c INT
 
     sleep 1
     "$(get_server_unzip_directory)/pentaho-server/start-pentaho-debug.sh" && tail -f "$(get_server_unzip_directory)/pentaho-server/tomcat/logs/catalina.out" | sed \
