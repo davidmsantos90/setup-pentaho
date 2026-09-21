@@ -74,7 +74,18 @@ get_json_file_mapping() {
   fi
 
   local mapping_url="$build_repository/hosted/$filename"
-  wget -nv -q -nc "$mapping_url"
+  if ! run_wget -nv -q -nc "$mapping_url"; then
+    echo -e "$ERROR- Failed to download the repository file mapping.$CLEAR" >&2
+    if [ "$secure" != false ]; then
+      echo -e "$WARN- Certificate validation is enabled. Retry with '-s false' for a trusted internal or self-signed endpoint.$CLEAR" >&2
+    fi
+    return 1
+  fi
+
+  if [ ! -f "$filename" ]; then
+    echo -e "$ERROR- Repository download completed without creating '$filename'.$CLEAR" >&2
+    return 1
+  fi
 
   jq -c '.' "$filename"
 }
@@ -117,7 +128,7 @@ get_date_from_json_old() {
     echo $label | cut -d'|' -f 2 | cut -d'_' -f 1 | tr -d ' '
   else
     local request_url=$(echo "$folder" | jq -r ".files.\"$(get_json_build_file_id)\".url")
-    local request_info=$(wget -S --spider "$request_url" 2>&1)
+    local request_info=$(run_wget -S --spider "$request_url" 2>&1)
     local content_disposition=$(echo "$request_info" | grep "Content-Disposition")
 
     local regex="filename=\".+-$version-([0-9]+)\..+\";"

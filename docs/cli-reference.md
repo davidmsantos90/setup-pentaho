@@ -178,7 +178,7 @@ setup-pentaho -m server -p paz-plugin-ee,pdd-plugin-ee,pir-plugin-ee
 
 ### `-s` — Secure mode `[true]`
 
-Controls SSL certificate validation when downloading artifacts via `wget`.  
+Controls SSL certificate validation for all repository requests via `wget`.  
 Set to `false` if you encounter certificate errors.
 
 ```zsh

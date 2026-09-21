@@ -47,6 +47,14 @@ get_plugin_folder_name() {
   PDI=pdi-ee-client
   SERVER=pentaho-server-ee
 
+run_wget() {
+  if [ "$secure" = false ]; then
+    wget --no-check-certificate "$@"
+  else
+    wget "$@"
+  fi
+}
+
 CURRENT_SCRIPT_DIR=$(dirname "$(realpath "$0")")
 
 set -a
