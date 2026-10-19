@@ -22,14 +22,15 @@ get_json_folder_id() {
 
 get_json_build_file_id() {
   local id=$1
-  local sufix=""
+  local suffix=""
 
   if [ -z "$id" ]; then
     case "$mode" in
       "$MODE_SERVER") id=$SERVER;;
-      "$MODE_PDI")
+      "$MODE_PDI") id=$PDI;;
+      "$MODE_PDI_OSGI")
         id=$PDI
-        sufix="-osgi"
+        suffix="-osgi"
         ;;
 
       # ?handle feature branch ids?
@@ -42,7 +43,33 @@ get_json_build_file_id() {
     id="$id-$version-$build_uppercase"
   fi
 
-  echo "$id$sufix.zip"
+  echo "$id$suffix.zip"
+}
+
+get_matching_json_file_key() {
+  local folder=$1
+  local id_override=${2:-}
+  local candidate_id
+  candidate_id=$(get_json_build_file_id "$id_override")
+  candidate_id=${candidate_id%.zip}
+
+  if [ -n "$folder" ]; then
+    local manifest_keys
+    manifest_keys=$(echo "$folder" | jq -r '.files | keys[]' 2>/dev/null)
+
+    if [ -n "$manifest_keys" ]; then
+      local key
+      for key in $manifest_keys; do
+        local normalized_key=${key%.zip}
+        if [ "$normalized_key" = "$candidate_id" ]; then
+          echo "$key"
+          return 0
+        fi
+      done
+    fi
+  fi
+
+  echo "${candidate_id}.zip"
 }
 
 get_file_modified_date() {
@@ -110,7 +137,15 @@ get_json_build_folder() {
 
 get_date_from_json() {
   local folder=$1
-  local modified=$(echo "$folder" | jq -r ".files.\"$(get_json_build_file_id)\".modified")
+  local file_key
+  file_key=$(get_matching_json_file_key "$folder")
+
+  local modified
+  modified=$(echo "$folder" | jq -r --arg key "$file_key" '.files[$key].modified // empty')
+
+  if [ -z "$modified" ] || [ "$modified" = "null" ]; then
+    modified=$(echo "$folder" | jq -r '.files | to_entries[] | .value.modified // empty' | head -n 1)
+  fi
 
   # split a string like "2023-10-01 2:34:56" to "2023-10-01"
   echo "$modified" | awk '{print $1}'
@@ -142,7 +177,11 @@ get_artifact_url_from_json() {
   local folder=$1
   local id_override=$2
 
-  local url=$(echo "$folder" | jq -r ".files.\"$(get_json_build_file_id "$id_override")\".url")
+  local file_key
+  file_key=$(get_matching_json_file_key "$folder" "$id_override")
+
+  local url
+  url=$(echo "$folder" | jq -r --arg key "$file_key" '.files[$key].url // empty')
 
   echo "$url"
 }

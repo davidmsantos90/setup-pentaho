@@ -8,6 +8,7 @@ BIFS="$IFS"
 ### Setup modes (-m / mode) ###
   MODE_SERVER="server"
   MODE_PDI="pdi"
+  MODE_PDI_OSGI="pdi-osgi"
 
 ### Server Plugins (-p / plugins) ###
   PLUGIN_PAZ="paz-plugin-ee"
@@ -204,8 +205,9 @@ print_help() {
   echo -e "$INFO  SETUP$CLEAR"
   echo ""
   echo -e "  $INFO-m$CLEAR $WARN[server]$CLEAR       Mode — product to set up"
-  echo -e "                    server  Pentaho Server (default)"
-  echo -e "                    pdi     Pentaho Data Integration / Spoon"
+  echo -e "                    server    Pentaho Server (default)"
+  echo -e "                    pdi       Pentaho Data Integration / Spoon"
+  echo -e "                    pdi-osgi  Legacy Pentaho Data Integration OSGi build"
   echo ""
   echo -e "  $INFO-b$CLEAR $WARN[snapshot]$CLEAR     Build type"
   echo -e "                    snapshot  Latest continuous build (default)"
