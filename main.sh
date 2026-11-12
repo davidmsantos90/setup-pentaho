@@ -203,6 +203,10 @@ if [ "$do_unzip_phase" = true ]; then
   echo -e "$SUCCESS\n### Unzip phase finished ###\n$CLEAR"
 fi
 
+if [ "$do_unzip_phase" = false ] && [ "$mode" != "$MODE_SERVER" ]; then
+  configure_pdi_launcher || exit 1
+fi
+
 ###
 ## 4. launch server
 #

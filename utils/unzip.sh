@@ -25,8 +25,21 @@ unzip_pdi() {
 
   unzip_artifact "$PDI" "$destination"
 
-  # enable debug on pdi
-  sed -i "" "s/#OPT/OPT/" "$destination/data-integration/spoon.sh"
+  configure_pdi_launcher
+}
+
+configure_pdi_launcher() {
+  local launcher="$(get_pdi_unzip_directory)/data-integration/spoon.sh"
+
+  # Enable debugging (builds use both '#OPT' and '# OPT').
+  sed -i "" 's/^#[[:space:]]*\(OPT=.*-Xdebug.*\)/\1/' "$launcher" || return
+
+  # Cocoa requires separate key/value arguments, not key=value or a JVM option.
+  if ! grep -q 'NSRequiresAquaSystemAppearance' "$launcher"; then
+    sed -i "" '/^OPT=.*-Xdebug/a\
+set -- -NSRequiresAquaSystemAppearance True "$@"
+' "$launcher"
+  fi
 }
 
 unzip_server() {
